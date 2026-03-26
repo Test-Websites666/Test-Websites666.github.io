@@ -502,7 +502,7 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
-    const db = getDatabase(app);
+    const db = firebaseConfig.databaseURL ? getDatabase(app, firebaseConfig.databaseURL) : getDatabase(app);
 
     const elements = {
       loadingScreen: document.getElementById("loadingScreen"),
@@ -1092,7 +1092,15 @@ $1$1      sidebar: document.getElementById("sidebarPanel"),
       state.unsubTerms = onValue(ref(db, "terms"), (snapshot) => {
         state.terms = normalizeTerms(snapshot.val());
         renderAll();
-      }, (error) => toast(readableDbError(error), "error"));
+      }, (error) => {
+        state.startupReady = true;
+        if (state.startupTimer) {
+          window.clearTimeout(state.startupTimer);
+          state.startupTimer = null;
+        }
+        setScreen("auth");
+        setAuthNotice(readableDbError(error), "error", "login");
+      });
     }
 
     function ensureUsersSubscription() {
@@ -1113,8 +1121,9 @@ $1$1      sidebar: document.getElementById("sidebarPanel"),
     }
 
     async function denyAccess(message) {
+      setScreen("auth");
       setAuthNotice(message, "error", "login");
-      await signOut(auth);
+      try { await signOut(auth); } catch {}
     }
 
     function subscribeProfile(uid) {
@@ -1437,7 +1446,21 @@ $1$1      sidebar: document.getElementById("sidebarPanel"),
     }
 
     function initAuth() {
+      state.startupReady = false;
+      if (state.startupTimer) window.clearTimeout(state.startupTimer);
+      state.startupTimer = window.setTimeout(() => {
+        if (!state.startupReady) {
+          setScreen("auth");
+          setAuthNotice("Firebase braucht zu lange oder wird blockiert. Prüfe Authorized Domains, Database URL und Rules.", "error", "login");
+        }
+      }, 8000);
+
       onAuthStateChanged(auth, (user) => {
+        state.startupReady = true;
+        if (state.startupTimer) {
+          window.clearTimeout(state.startupTimer);
+          state.startupTimer = null;
+        }
         if (!user) {
           resetLoggedOutState();
           setScreen("auth");
